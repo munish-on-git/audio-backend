@@ -36,7 +36,7 @@ async def websocket_endpoint(websocket: WebSocket, current_user: User = Depends(
     log_context = {"connection_id": connection_id, "user_id": current_user.username}
 
     await websocket.accept()
-    logging.info(json.dumps({**log_context, "event": "connection_accepted", "total_active_connections": len(ACTIVE_CONNECTIONS)}))
+    logging.info(json.dumps({**log_context, "event": "connection_accepted", "total_active_connections": len(ACTIVE_CONNECTIONS)},ensure_ascii=False))
 
     try:
         session_id = None
@@ -49,7 +49,7 @@ async def websocket_endpoint(websocket: WebSocket, current_user: User = Depends(
                     if message_json.get("type") == "start_call":
                         session_id = f"call_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{str(uuid.uuid4())[:8]}"
                         log_context["session_id"] = session_id # Add it to our logging context
-                        logging.info(json.dumps({**log_context, "event": "start_call_signal_received"}))
+                        logging.info(json.dumps({**log_context, "event": "start_call_signal_received"}, ensure_ascii=False))
                         break
                     else:
                         logging.warning(json.dumps({**log_context, "event": "unexpected_idle_message", "message": message_json}))
@@ -58,7 +58,7 @@ async def websocket_endpoint(websocket: WebSocket, current_user: User = Depends(
 
                     
             except WebSocketDisconnect:
-                logging.info(json.dumps({**log_context, "event": "client_disconnected_during_idle"}))
+                logging.info(json.dumps({**log_context, "event": "client_disconnected_during_idle"}, ensure_ascii=False))
                 return # Exit the endpoint
             except Exception as e:
                 logging.error(json.dumps({**log_context, "event": "error_in_idle_loop", "error": str(e)}), exc_info=True)
@@ -67,12 +67,12 @@ async def websocket_endpoint(websocket: WebSocket, current_user: User = Depends(
 
         # new gemini session creates here
         ACTIVE_GEMINI_SESSIONS.add(session_id)
-        logging.info(json.dumps({**log_context, "event": "gemini_session_initializing", "total_active_gemini_sessions": len(ACTIVE_GEMINI_SESSIONS)}))
+        logging.info(json.dumps({**log_context, "event": "gemini_session_initializing", "total_active_gemini_sessions": len(ACTIVE_GEMINI_SESSIONS)}, ensure_ascii=False))
 
         # Check if the GCS bucket is configured before proceeding
         if settings.GCS_BUCKET_NAME:
              # Create a unique folder for each call session inside the bucket
-            blob_folder = f"calls/{datetime.now().strftime('%Y/%m/%d')}/{session_id}/"
+            blob_folder = f"calls/{current_user.username}/{datetime.now().strftime('%Y/%m/%d')}/{session_id}/"
         else:
             blob_folder = None
 
@@ -102,7 +102,7 @@ async def websocket_endpoint(websocket: WebSocket, current_user: User = Depends(
 
         try:
             async with client.aio.live.connect(model=MODEL, config=live_config) as session:
-                logging.info(json.dumps({**log_context, "event": "gemini_session_started_successfully", "model": MODEL}))
+                logging.info(json.dumps({**log_context, "event": "gemini_session_started_successfully", "model": MODEL}, ensure_ascii=False))
 
                 await websocket.send_json({"type": "call_started"})
 
@@ -115,7 +115,7 @@ async def websocket_endpoint(websocket: WebSocket, current_user: User = Depends(
                             if "bytes" in message:
                                 data = message["bytes"]
                                 user_wav_writer.writeframes(data)
-                                logging.info(json.dumps({**log_ctx, "event": "audio_chunk_received", "size_bytes": len(data)}))
+                                logging.info(json.dumps({**log_ctx, "event": "audio_chunk_received", "size_bytes": len(data)}, ensure_ascii=False))
                                 # Before sending to Gemini, we must encode the raw bytes into a Base64 string.
                                 encoded_audio = base64.b64encode(data).decode('utf-8')
                                 await session.send(input={"data": encoded_audio, "mime_type": "audio/pcm;rate=16000"})
@@ -128,12 +128,12 @@ async def websocket_endpoint(websocket: WebSocket, current_user: User = Depends(
                                     #  This is for VIDEO, which arrives as a Base64 string 
                                     # We just need to forward the string directly. DO NOT decode it.
                                     img_payload = control_msg["payload"] 
-                                    logging.info(json.dumps({**log_ctx, "event": "video_frame_received", "size_bytes": len(img_payload)}))
+                                    logging.info(json.dumps({**log_ctx, "event": "video_frame_received", "size_bytes": len(img_payload)}, ensure_ascii=False))
                                     # sending live frames 
                                     await session.send(input={"data": img_payload, "mime_type": "image/jpeg"})
 
                                 elif msg_type == "audio_stream_end":
-                                    logging.info(json.dumps({**log_ctx, "event": "audio_stream_end_signal_received"}))
+                                    logging.info(json.dumps({**log_ctx, "event": "audio_stream_end_signal_received"}, ensure_ascii=False))
                                     break
                     except WebSocketDisconnect:
                         logging.warning(json.dumps({**log_ctx, "event": "client_disconnected_during_call"}))
@@ -157,7 +157,7 @@ async def websocket_endpoint(websocket: WebSocket, current_user: User = Depends(
                                     full_gemini_transcript += transcript_chunk
                                     await websocket.send_json({"type": "gemini_chunk", "text": transcript_chunk})
                             if full_gemini_transcript:
-                                logging.info(json.dumps({**log_ctx, "event": "gemini_full_transcript_received", "transcript": full_gemini_transcript.strip()}))
+                                logging.info(json.dumps({**log_ctx, "event": "gemini_full_transcript_received", "transcript": full_gemini_transcript.strip()}, ensure_ascii=False))
                     except WebSocketDisconnect:
                         logging.warning(json.dumps({**log_ctx, "event": "client_disconnected_while_receiving_response"}))
 
@@ -173,8 +173,8 @@ async def websocket_endpoint(websocket: WebSocket, current_user: User = Depends(
             logging.error(json.dumps({**log_context, "event": "gemini_session_error", "error": str(e)}), exc_info=True)
         finally:
             ACTIVE_GEMINI_SESSIONS.discard(session_id)
-            logging.info(json.dumps({**log_context, "event": "gemini_session_ended", "total_active_gemini_sessions": len(ACTIVE_GEMINI_SESSIONS)}))
-            logging.info(json.dumps({**log_context, "event": "file_processing_started"}))
+            logging.info(json.dumps({**log_context, "event": "gemini_session_ended", "total_active_gemini_sessions": len(ACTIVE_GEMINI_SESSIONS)}, ensure_ascii=False))
+            logging.info(json.dumps({**log_context, "event": "file_processing_started"}, ensure_ascii=False))
             user_wav_writer.close()
             gemini_wav_writer.close()
 
@@ -187,13 +187,13 @@ async def websocket_endpoint(websocket: WebSocket, current_user: User = Depends(
 
             try:
                 await websocket.send_json({"type": "call_ended"})
-                logging.info(json.dumps({**log_context, "event": "call_ended_signal_sent"}))
+                logging.info(json.dumps({**log_context, "event": "call_ended_signal_sent"}, ensure_ascii=False))
             except (WebSocketDisconnect, RuntimeError):
-                logging.warning(json.dumps({**log_context, "event": "client_disconnected_before_call_ended_signal"}))
+                logging.warning(json.dumps({**log_context, "event": "client_disconnected_before_call_ended_signal"}, ensure_ascii=False))
                 raise WebSocketDisconnect
 
     except WebSocketDisconnect:
-        logging.info(json.dumps({**log_context, "event": "websocket_closed_by_client"}))
+        logging.info(json.dumps({**log_context, "event": "websocket_closed_by_client"}, ensure_ascii=False))
     except Exception as e:
         logging.error(json.dumps({**log_context, "event": "unhandled_endpoint_error", "error": str(e)}), exc_info=True)
     finally:
@@ -201,5 +201,4 @@ async def websocket_endpoint(websocket: WebSocket, current_user: User = Depends(
         logging.info(json.dumps({
         **log_context, 
         "event": "connection_closed",
-        "total_active_connections": len(ACTIVE_CONNECTIONS) # Now we log the NEW total
-    }))
+        "total_active_connections": len(ACTIVE_CONNECTIONS)}, ensure_ascii=False))
