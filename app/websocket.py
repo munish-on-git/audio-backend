@@ -1,11 +1,11 @@
 import os, asyncio, logging, json, wave, base64, uuid
 from datetime import datetime
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
-from .auth import get_current_user, User
-from .config import settings
+from app.auth import get_current_user, User
+from app.config import settings
+from app.services.gcs_utils import upload_to_gcs
 from google import genai
 from google.genai import types
-from .services.gcs_utils import upload_to_gcs
 
 
 router = APIRouter()

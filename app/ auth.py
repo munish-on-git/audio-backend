@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.security import OAuth2PasswordRequestForm
 
-from .security import verify_password, create_access_token, decode_access_token, get_password_hash
+from app.security import verify_password, create_access_token, decode_access_token, get_password_hash
 
 # Create a router. This is like a mini-FastAPI app that can be included in the main one.
 router = APIRouter()

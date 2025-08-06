@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from . import auth, websocket
-from .websocket import ACTIVE_CONNECTIONS, ACTIVE_GEMINI_SESSIONS
+from app import auth, websocket
+from app.websocket import ACTIVE_CONNECTIONS, ACTIVE_GEMINI_SESSIONS
 
 # FastAPI Setup
 app = FastAPI(title="Edza AI Voice Service")
