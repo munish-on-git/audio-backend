@@ -15,4 +15,6 @@ Thumbs.db
 .env
 recordings
 secrets/
-
+logs/
+load_test/
+temp.py 
