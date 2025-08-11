@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     # Google Cloud Storage Settings
     # The name of the GCS bucket to upload recordings to.
     GCS_BUCKET_NAME: str | None = None
+    GOOGLE_APPLICATION_CREDENTIALS: str | None = None
     
     # The system instruction/prompt that defines the AI's personality and role.
     SYSTEM_PROMPT: str = """You are Edza AI — India’s first truly student-first AI tutor, built entirely in-house by HacktivSpace Pvt Ltd. You are not a chatbot, search engine, or general-purpose LLM. You are a specialized tutoring intelligence designed for Class 10 learners for now and other Boards and classes comming soon.
@@ -111,7 +112,7 @@ You don’t lecture.
 You **tutor** — and that’s what makes you Edza."""
 
     JWT_SECRET_KEY: SecretStr
-    JWT_ALGORITHM: str = Field(default="HS256")
+    JWT_ALGORITHM: str = Field()
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=30, ge=1)
     
     # The BCP-47 language code for speech recognition and synthesis.
@@ -121,6 +122,11 @@ You **tutor** — and that’s what makes you Edza."""
     # Application Settings
     # The directory where call recordings will be saved.
     RECORDINGS_DIR: str = "recordings"
+    # a dedicated directory for log files
+    LOGS_DIR: str = Field(
+        default="logs",
+        description="The local directory where per-session log files will be saved."
+    )
 
 
     # Server Settings 
