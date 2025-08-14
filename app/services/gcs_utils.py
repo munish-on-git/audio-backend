@@ -1,5 +1,6 @@
 import logging
 from google.cloud import storage
+import asyncio 
 from google.api_core import exceptions
 from app.config import settings
 
@@ -36,3 +37,10 @@ def upload_to_gcs(local_file_path: str, destination_blob_name: str) -> bool:
     except Exception as e:
         logging.error(f"An unexpected error occurred during GCS upload: {e}")
         return False
+    
+
+async def upload_to_gcs_async(local_file_path: str, destination_blob_name: str) -> bool:
+    # Asynchronously uploads a file to GCS by running the blocking upload function in a separate thread.
+    # asyncio.to_thread tells the event loop to run the given function (upload_to_gcs)in a separate thread from the default thread pool, and to await the result
+    # This prevents the main application from blocking.
+    return await asyncio.to_thread(upload_to_gcs, local_file_path, destination_blob_name)

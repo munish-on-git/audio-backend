@@ -1,10 +1,11 @@
 import os, asyncio, logging, json, wave, base64, uuid, sys
+import itertools
 from datetime import datetime
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 from loguru import logger   
 from app.auth import get_current_user, User
 from app.config import settings
-from app.services.gcs_utils import upload_to_gcs
+from app.services.gcs_utils import upload_to_gcs_async
 from google import genai
 from google.genai import types
 
@@ -26,6 +27,12 @@ ACTIVE_CONNECTIONS = set()
 # A thread-safe set to store IDs of only the sessions actively using the Gemini API
 ACTIVE_GEMINI_SESSIONS = set()
 
+# Create a pool of API keys from the settings.
+# itertools.cycle creates an infinite iterator that loops through the keys.
+API_KEY_POOL = itertools.cycle(
+    [key.get_secret_value() for key in settings.GEMINI_API_KEYS]
+)
+
 
 MODEL = settings.GEMINI_MODEL
 RECORDINGS_DIR = settings.RECORDINGS_DIR
@@ -34,10 +41,6 @@ os.makedirs(RECORDINGS_DIR, exist_ok=True)
 # create the logs directory 
 LOGS_DIR = settings.LOGS_DIR
 os.makedirs(LOGS_DIR, exist_ok=True)
-
-# Gemini Client
-client = genai.Client(api_key=settings.GEMINI_API_KEY.get_secret_value())
-
 
 @router.websocket("/ws-ai")
 async def websocket_endpoint(websocket: WebSocket, current_user: User = Depends(get_current_user)):
@@ -99,7 +102,16 @@ async def websocket_endpoint(websocket: WebSocket, current_user: User = Depends(
             session_id=session_id
         )
 
-        session_log.info("gemini_session_initializing")
+        # For each new session, get the next available API key from our pool
+        selected_api_key = next(API_KEY_POOL)
+
+        # Create a Gemini client specifically for this session with the selected key
+        client = genai.Client(api_key=selected_api_key)
+
+        # Log which key is being used for this session for easier debugging
+        session_log.info("gemini_session_initializing", selected_key_hash=hash(selected_api_key))
+
+        # session_log.info("gemini_session_initializing")
 
         # Check if the GCS bucket is configured before proceeding
         if settings.GCS_BUCKET_NAME:
@@ -220,12 +232,35 @@ async def websocket_endpoint(websocket: WebSocket, current_user: User = Depends(
 
             # UPLOAD AND CLEANUP LOGIC 
             if blob_folder:
-                if upload_to_gcs(user_wav_path, f"{blob_folder}user.wav"):
-                    os.remove(user_wav_path)
-                if upload_to_gcs(gemini_wav_path, f"{blob_folder}gemini.wav"):
-                    os.remove(gemini_wav_path)
-                if os.path.exists(log_filepath) and upload_to_gcs(log_filepath, f"{blob_folder}session.log"):
-                    os.remove(log_filepath)
+                # Create a list of tasks to run concurrently
+                upload_tasks = []
+
+                # Task 1: Upload user audio
+                upload_tasks.append(
+                    upload_to_gcs_async(user_wav_path, f"{blob_folder}user.wav")
+                )
+                
+                # Task 2: Upload Gemini audio
+                upload_tasks.append(
+                    upload_to_gcs_async(gemini_wav_path, f"{blob_folder}gemini.wav")
+                )
+                
+                # Task 3: Upload log file
+                if os.path.exists(log_filepath):
+                    upload_tasks.append(
+                        upload_to_gcs_async(log_filepath, f"{blob_folder}session.log")
+                    )
+
+                # asyncio.gather runs all tasks in the list concurrently.
+                # The 'finally' block will not proceed until all uploads are complete.
+                # However, the main server event loop is NOT blocked during this time.
+                results = await asyncio.gather(*upload_tasks, return_exceptions=True)
+
+                # Clean up local files only if the corresponding upload was successful
+                # (This is more robust error handling)
+                if isinstance(results[0], bool) and results[0]: os.remove(user_wav_path)
+                if isinstance(results[1], bool) and results[1]: os.remove(gemini_wav_path)
+                if len(results) > 2 and isinstance(results[2], bool) and results[2]: os.remove(log_filepath)
 
             try:
                 await websocket.send_json({"type": "call_ended"})

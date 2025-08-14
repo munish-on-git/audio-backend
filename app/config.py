@@ -1,7 +1,8 @@
 import os 
 import logging
-from pydantic import SecretStr, Field, field_validator, ValidationError
+from pydantic import SecretStr, Field, field_validator,computed_field, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import List
 
 # Setup a basic logger for any potential config errors
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -16,8 +17,18 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8')
 
     # Gemini API Settings 
-    # SecretStr is used to protect the API key from being accidentally logged.
-    GEMINI_API_KEY: SecretStr
+    # Load the raw, comma-separated keys from the .env file as a SINGLE SecretStr.
+    # We make this field "private" with a leading underscore as it's for internal use.
+    GEMINI_API_KEY: SecretStr = Field(..., alias='GEMINI_API_KEY')
+
+    @computed_field
+    @property
+    def GEMINI_API_KEYS(self) -> List[SecretStr]:
+        """Parses the raw API key string into a list of SecretStr objects."""
+        raw_keys = self.GEMINI_API_KEY.get_secret_value()
+        if not raw_keys:
+            raise ValueError("GEMINI_API_KEY environment variable is empty.")
+        return [SecretStr(key.strip()) for key in raw_keys.split(',')]
     
     # The Gemini model to use. Defaults to the latest flash live model.
     GEMINI_MODEL: str = "gemini-2.0-flash-live-001"
@@ -134,27 +145,19 @@ You **tutor** — and that’s what makes you Edza."""
     SERVER_HOST: str = "0.0.0.0"
     SERVER_PORT: int = 8000
 
-# Create a single, importable instance of the settings.
-# Your application will import this `settings` object.
-    @field_validator('GEMINI_API_KEY', 'JWT_SECRET_KEY')
-    @classmethod
-    def secret_must_not_be_empty(cls, v: SecretStr, info):
-        """Ensures that secret values are not just empty strings."""
-        if not v or not v.get_secret_value():
-            # info.field_name will be 'GEMINI_API_KEY' or 'JWT_SECRET_KEY'
-            raise ValueError(f"{info.field_name} is not set or is empty in your .env file.")
-        return v
         
-    @field_validator('GCS_BUCKET_NAME')
-    @classmethod
-    def check_gcs_credentials_if_bucket_is_set(cls, v: str):
-        """If a GCS bucket is set, this validator ensures credentials are also present."""
-        if v and not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+@field_validator('GCS_BUCKET_NAME')
+@classmethod
+def check_gcs_credentials_if_bucket_is_set(cls, v: str, info):
+    """If a GCS bucket is set, this validator ensures credentials are also present."""
+    if v:
+        gcs_creds = info.data.get('GOOGLE_APPLICATION_CREDENTIALS')
+        if not gcs_creds:
             raise ValueError(
                 "GCS_BUCKET_NAME is set, but GOOGLE_APPLICATION_CREDENTIALS is not. "
                 "You must provide both to enable GCS uploads."
             )
-        return v
+    return v
 
 # Singleton Pattern for Settings 
 def get_settings() -> Settings:
